@@ -1,0 +1,17 @@
+kw_motor_test:
+  ros__parameters:
+    serial_port: "/dev/ttyACM0"
+    serial_baud: 921600
+    can_id: 1
+    enable_on_start: true
+    state_topic: "/kw_motor/state"
+    period_ms: 10.0
+    print_every: 100
+    pos_max: 3.14
+    vel_max: 45.0
+    iq_max: 2.0
+    kp: 0.0
+    kd: 0.0
+    q: 0.0
+    dq: 0.0
+    iq: 0.1

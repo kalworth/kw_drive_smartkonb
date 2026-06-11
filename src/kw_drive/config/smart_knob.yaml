@@ -1,0 +1,22 @@
+kw_smart_knob:
+  ros__parameters:
+    serial_port: "/dev/ttyACM0"
+    serial_baud: 921600
+    can_id: 1
+    enable_on_start: true
+    state_topic: "/kw_motor/state"
+    period_ms: 5.0
+    print_every: 100
+    pos_max: 3.14
+    vel_max: 45.0
+    iq_max: 2.0
+    iq_limit: 0.3
+    detents_per_revolution: 0
+    detent_spacing: 1.57
+    detent_strength: 0.3
+    damping: 0.0
+    torque_sign: 1.0
+    wrap_angle: true
+    wrap_period: 0.0
+    feedback_timeout_ms: 100.0
+    zero_on_start: true
