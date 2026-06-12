@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <thread>
@@ -143,6 +144,12 @@ void MotorControl::control_cmd(uint16_t id , uint8_t cmd)
 void MotorControl::control_mit(Motor &motor, float kp, float kd, float q, float dq, float iq)
 {
     static auto float_to_uint = [](float x, float xmin, float xmax, uint8_t bits) -> uint16_t {
+        if (!std::isfinite(x) || !std::isfinite(xmin) || !std::isfinite(xmax)) {
+            throw std::invalid_argument("float_to_uint: values must be finite");
+        }
+        if (xmax <= xmin) {
+            throw std::invalid_argument("float_to_uint: xmax must be greater than xmin");
+        }
         float span = xmax - xmin;
         float data_norm = std::clamp((x - xmin) / span, 0.0F, 1.0F);
         return static_cast<uint16_t>(data_norm * ((1 << bits) - 1));
@@ -153,9 +160,9 @@ void MotorControl::control_mit(Motor &motor, float kp, float kd, float q, float 
         throw std::runtime_error("control_mit: motor id is not registered");
     }
     auto& m = motors[id];
-    uint16_t kp_uint = float_to_uint(kp, 0, 500, 12);
-    uint16_t kd_uint = float_to_uint(kd, 0, 5, 12);
     LimitParam limit_param_cmd = m->get_limit_param();
+    uint16_t kp_uint = float_to_uint(kp, 0.0F, limit_param_cmd.kp_max, 12);
+    uint16_t kd_uint = float_to_uint(kd, 0.0F, limit_param_cmd.kd_max, 12);
     uint16_t q_uint = float_to_uint(q, -limit_param_cmd.pos_max, limit_param_cmd.pos_max, 16);
     uint16_t dq_uint = float_to_uint(dq, -limit_param_cmd.vel_max, limit_param_cmd.vel_max, 12);
     uint16_t iq_uint = float_to_uint(iq, -limit_param_cmd.iq_max, limit_param_cmd.iq_max, 12);

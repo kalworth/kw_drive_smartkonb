@@ -19,6 +19,8 @@ typedef struct
     float pos_max;
     float vel_max;
     float iq_max;
+    float kp_max;
+    float kd_max;
 } LimitParam;
 
 struct MotorConfig

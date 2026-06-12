@@ -1,6 +1,7 @@
 #include "kw_drive/protocol/kw_motor.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -48,6 +49,8 @@ public:
     declare_parameter<double>("pos_max", 12.5);
     declare_parameter<double>("vel_max", 30.0);
     declare_parameter<double>("iq_max", 10.0);
+    declare_parameter<double>("kp_max", 500.0);
+    declare_parameter<double>("kd_max", 5.0);
     declare_parameter<double>("kp", 0.0);
     declare_parameter<double>("kd", 0.0);
     declare_parameter<double>("q", 0.0);
@@ -81,8 +84,20 @@ public:
     const auto pos_max = get_parameter("pos_max").as_double();
     const auto vel_max = get_parameter("vel_max").as_double();
     const auto iq_max = get_parameter("iq_max").as_double();
-    if (pos_max <= 0.0 || vel_max <= 0.0 || iq_max <= 0.0) {
-      throw std::out_of_range("pos_max, vel_max, and iq_max must be > 0");
+    const auto kp_max = get_parameter("kp_max").as_double();
+    const auto kd_max = get_parameter("kd_max").as_double();
+    if (
+      !std::isfinite(pos_max) || !std::isfinite(vel_max) || !std::isfinite(iq_max) ||
+      !std::isfinite(kp_max) || !std::isfinite(kd_max) ||
+      pos_max <= 0.0 || vel_max <= 0.0 || iq_max <= 0.0 || kp_max <= 0.0 || kd_max <= 0.0)
+    {
+      throw std::out_of_range("pos_max, vel_max, iq_max, kp_max, and kd_max must be finite and > 0");
+    }
+    if (!std::isfinite(kp_) || kp_ < 0.0F || kp_ > kp_max) {
+      throw std::out_of_range("kp must be finite and in [0, kp_max]");
+    }
+    if (!std::isfinite(kd_) || kd_ < 0.0F || kd_ > kd_max) {
+      throw std::out_of_range("kd must be finite and in [0, kd_max]");
     }
 
     kw::MotorConfig motor_config{};
@@ -91,14 +106,16 @@ public:
       static_cast<float>(pos_max),
       static_cast<float>(vel_max),
       static_cast<float>(iq_max),
+      static_cast<float>(kp_max),
+      static_cast<float>(kd_max),
     };
     motors_.push_back(motor_config);
 
     RCLCPP_INFO(
       get_logger(),
-      "Opening KW serial %s @ %u, motor_id=0x%02x, command_id=0x%02x, feedback_id=0x%02x, enable_on_start=%s, max=[pos %.3f, vel %.3f, iq %.3f]",
+      "Opening KW serial %s @ %u, motor_id=0x%02x, command_id=0x%02x, feedback_id=0x%02x, enable_on_start=%s, max=[pos %.3f, vel %.3f, iq %.3f, kp %.3f, kd %.3f]",
       serial_port_.c_str(), serial_baud, can_id_, can_id_ | 0x70, can_id_ | 0x10,
-      enable_on_start ? "true" : "false", pos_max, vel_max, iq_max);
+      enable_on_start ? "true" : "false", pos_max, vel_max, iq_max, kp_max, kd_max);
 
     control_ = std::make_shared<kw::MotorControl>(
       serial_baud, serial_port_, &motors_, enable_on_start);

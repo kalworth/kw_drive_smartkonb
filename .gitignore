@@ -6,6 +6,8 @@ log/
 # Local agent / learning notes
 AGENTS.md
 LEARNING.md
+.reference/mit.md
+reference/
 
 # Editor and local cache files
 .vscode/

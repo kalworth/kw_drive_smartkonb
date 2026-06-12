@@ -10,8 +10,10 @@ kw_motor_test:
     pos_max: 3.14
     vel_max: 45.0
     iq_max: 2.0
+    kp_max: 500.0
+    kd_max: 5.0
     kp: 0.0
     kd: 0.0
     q: 0.0
     dq: 0.0
-    iq: 0.1
+    iq: 0.0
