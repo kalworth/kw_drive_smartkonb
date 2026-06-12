@@ -32,7 +32,6 @@
 | 工具包 | `src/kw_drive_tools` | PyQt5 示波器 `kw_scope` |
 | 配置 | `src/kw_drive/config` | `motor_test.yaml`、`smart_knob.yaml` |
 | 权限脚本 | `scripts/fix_kw_u2canfd_permissions.sh` | 修复 WSL 下 `/dev/ttyACM0` 访问权限 |
-| 学习记录 | `LEARNING.md` | 实机测试和工程笔记 |
 
 ## 🧭 核心流程
 
@@ -261,7 +260,6 @@ CAN ID 与电机配置一致
 | `src/kw_drive_tools/kw_drive_tools/kw_scope.py` | PyQt5 实时示波器 |
 | `scripts` | 工作空间辅助脚本 |
 | `mit.md` | MIT 协议笔记 |
-| `LEARNING.md` | 工程学习和实机记录 |
 
 ## 🧵 节点分工
 
