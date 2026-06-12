@@ -8,7 +8,7 @@
 ## ✨ New
 
 - 🔌 **[2026-06-12][v0.1.0]** 按固定 README 模板重写驱动包说明，补齐节点、配置、验证和安全边界。
-- 🕹️ **[2026-06-11][v0.1.0]** `kw_smart_knob` 支持 `off / detent / limit / spring` 模式，并通过参数回调支持运行时调参。
+- 🕹️ **[2026-06-11][v0.1.0]** `kw_smart_knob` 支持 `free / detent / endstop / spring` 模式，并通过参数回调支持运行时调参。
 
 <details>
 <summary>历史更新</summary>
@@ -109,14 +109,14 @@ src/kw_drive/config/smart_knob.yaml
 
 | 参数 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `basic.mode` | `"detent"` | 默认段落感模式 |
+| `basic.mode` | `"detent"` | 默认棘轮档位模式 |
 | `basic.period_ms` | `5.0` | 控制周期 |
 | `basic.feedback_timeout_ms` | `100.0` | 反馈超时保护 |
 | `basic.zero_on_start` | `true` | 第一次反馈作为中心点 |
 | `motor.enable_on_start` | `true` | 节点启动后发送使能 |
 | `mit.kp_max` / `mit.kd_max` | `10.0` / `1.0` | Smart Knob 使用的 MIT 增益映射上限 |
 | `detent.spacing` | `0.02` | 虚拟档位间隔 |
-| `limit.min` / `limit.max` | `-1.57` / `1.57` | 虚拟左右限位 |
+| `endstop.min` / `endstop.max` | `-1.57` / `1.57` | 虚拟 endstop 左右止挡 |
 
 ### 3. ▶️ 编译和基础运行
 
@@ -143,7 +143,7 @@ ros2 launch kw_drive motor_test.launch.py
 
 ### 4. 🕹️ Smart Knob 运行
 
-`kw_smart_knob` 读取电机反馈，根据 `basic.mode` 计算目标，再发送 MIT 命令：
+`kw_smart_knob` 读取电机反馈，根据 `basic.mode` 计算目标，再发送 MIT 命令。命名对齐开源 SmartKnob 的 `virtual detents` 和 `endstops`：`detent` 是棘轮/虚拟档位，`endstop` 是软件止挡。
 
 ```text
 kp / kd / q_ref=target_q / dq_ref=0 / iq_ff
@@ -159,27 +159,31 @@ ros2 launch kw_drive smart_knob.launch.py
 
 | `basic.mode` | 行为 |
 | :--- | :--- |
-| `"off"` | 始终发送零 MIT 命令 |
-| `"detent"` | 吸附到最近虚拟档位 |
-| `"limit"` | 范围内零输出，越过 `limit.min/max` 后吸回边界 |
+| `"free"` | 始终发送零 MIT 命令 |
+| `"detent"` | 吸附到最近棘轮档位 |
+| `"endstop"` | 范围内零输出，越过 `endstop.min/max` 后吸回边界 |
 | `"spring"` | 始终吸回启动中心点 |
+
+兼容说明：旧模式名 `off` 会映射到 `free`，旧模式名 `limit` 会映射到 `endstop`。
 
 运行时可修改参数：
 
 | 参数 | 说明 |
 | :--- | :--- |
-| `basic.mode` | 切换 `off / detent / limit / spring` |
+| `basic.mode` | 切换 `free / detent / endstop / spring` |
 | `basic.print_every` | 日志打印间隔 |
 | `basic.feedback_timeout_ms` | 反馈超时阈值 |
 | `detent.per_revolution` / `detent.spacing` | 虚拟档位密度 |
-| `detent.kp` / `detent.kd` / `detent.iq_ff` | 段落感 MIT 参数 |
-| `limit.min` / `limit.max` / `limit.kp` / `limit.kd` | 虚拟限位参数 |
+| `detent.kp` / `detent.kd` / `detent.iq_ff` | 棘轮档位 MIT 参数 |
+| `endstop.min` / `endstop.max` / `endstop.kp` / `endstop.kd` | 虚拟 endstop 参数 |
 | `spring.kp` / `spring.kd` / `spring.iq_ff` | 回中模式参数 |
+
+旧参数组 `limit.*` 仍可在线修改并映射到 `endstop.*`；新配置统一使用 `endstop.*`。
 
 示例：
 
 ```bash
-ros2 param set /kw_smart_knob basic.mode "limit"
+ros2 param set /kw_smart_knob basic.mode "endstop"
 ros2 param set /kw_smart_knob detent.kp 0.8
 ros2 param set /kw_smart_knob spring.kp 0.3
 ```

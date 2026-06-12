@@ -61,40 +61,54 @@ double checked_nonnegative_double(
   return value;
 }
 
+double read_aliased_double(
+  const rclcpp::Node & node,
+  const std::string & canonical_name,
+  const std::string & legacy_name,
+  double default_value)
+{
+  const double canonical_value = node.get_parameter(canonical_name).as_double();
+  const double legacy_value = node.get_parameter(legacy_name).as_double();
+  if (canonical_value == default_value && legacy_value != default_value) {
+    return legacy_value;
+  }
+  return canonical_value;
+}
+
 enum class KnobMode
 {
-  Off,
+  Free,
   Detent,
-  Limit,
+  Endstop,
   Spring,
 };
 
 KnobMode parse_mode(const std::string & mode)
 {
-  if (mode == "off") {
-    return KnobMode::Off;
+  if (mode == "free" || mode == "off") {
+    return KnobMode::Free;
   }
   if (mode == "detent") {
     return KnobMode::Detent;
   }
-  if (mode == "limit") {
-    return KnobMode::Limit;
+  if (mode == "endstop" || mode == "limit") {
+    return KnobMode::Endstop;
   }
   if (mode == "spring") {
     return KnobMode::Spring;
   }
-  throw std::invalid_argument("mode must be one of: off, detent, limit, spring");
+  throw std::invalid_argument("mode must be one of: free, detent, endstop, spring");
 }
 
 const char * mode_name(KnobMode mode)
 {
   switch (mode) {
-    case KnobMode::Off:
-      return "off";
+    case KnobMode::Free:
+      return "free";
     case KnobMode::Detent:
       return "detent";
-    case KnobMode::Limit:
-      return "limit";
+    case KnobMode::Endstop:
+      return "endstop";
     case KnobMode::Spring:
       return "spring";
   }
@@ -104,7 +118,7 @@ const char * mode_name(KnobMode mode)
 struct KnobCommand
 {
   bool active{false};
-  const char * label{"off"};
+  const char * label{"free"};
   long index{0};
   double relative_q{0.0};
   double target_q{0.0};
@@ -152,6 +166,10 @@ public:
     declare_parameter<double>("detent.kd", 0.02);
     declare_parameter<double>("detent.iq_ff", 0.0);
 
+    declare_parameter<double>("endstop.min", -1.57);
+    declare_parameter<double>("endstop.max", 1.57);
+    declare_parameter<double>("endstop.kp", 1.2);
+    declare_parameter<double>("endstop.kd", 0.02);
     declare_parameter<double>("limit.min", -1.57);
     declare_parameter<double>("limit.max", 1.57);
     declare_parameter<double>("limit.kp", 1.2);
@@ -231,21 +249,27 @@ public:
       throw std::out_of_range("abs(detent.iq_ff) must be <= motor.iq_max");
     }
 
-    limit_min_ = get_parameter("limit.min").as_double();
-    limit_max_ = get_parameter("limit.max").as_double();
-    limit_kp_ = checked_nonnegative_double(*this, "limit.kp");
-    limit_kd_ = checked_nonnegative_double(*this, "limit.kd");
-    if (!std::isfinite(limit_min_) || !std::isfinite(limit_max_)) {
-      throw std::out_of_range("limit.min and limit.max must be finite");
+    endstop_min_ = read_aliased_double(*this, "endstop.min", "limit.min", -1.57);
+    endstop_max_ = read_aliased_double(*this, "endstop.max", "limit.max", 1.57);
+    endstop_kp_ = read_aliased_double(*this, "endstop.kp", "limit.kp", 1.2);
+    endstop_kd_ = read_aliased_double(*this, "endstop.kd", "limit.kd", 0.02);
+    if (!std::isfinite(endstop_min_) || !std::isfinite(endstop_max_)) {
+      throw std::out_of_range("endstop.min and endstop.max must be finite");
     }
-    if (limit_min_ >= limit_max_) {
-      throw std::out_of_range("limit.min must be smaller than limit.max");
+    if (endstop_min_ >= endstop_max_) {
+      throw std::out_of_range("endstop.min must be smaller than endstop.max");
     }
-    if (limit_kp_ > kp_max_) {
-      throw std::out_of_range("limit.kp must be <= mit.kp_max");
+    if (!std::isfinite(endstop_kp_) || endstop_kp_ < 0.0) {
+      throw std::out_of_range("endstop.kp must be finite and >= 0");
     }
-    if (limit_kd_ > kd_max_) {
-      throw std::out_of_range("limit.kd must be <= mit.kd_max");
+    if (!std::isfinite(endstop_kd_) || endstop_kd_ < 0.0) {
+      throw std::out_of_range("endstop.kd must be finite and >= 0");
+    }
+    if (endstop_kp_ > kp_max_) {
+      throw std::out_of_range("endstop.kp must be <= mit.kp_max");
+    }
+    if (endstop_kd_ > kd_max_) {
+      throw std::out_of_range("endstop.kd must be <= mit.kd_max");
     }
 
     spring_kp_ = checked_nonnegative_double(*this, "spring.kp");
@@ -285,11 +309,11 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "Opening KW smart knob serial %s @ %u, motor_id=0x%02x, enable_on_start=%s, mode=%s, period=%.3f ms, spacing=%.5f rad, detents_per_revolution=%d, wrap_angle=%s, wrap_period=%.5f, kp=%.3f, kd=%.3f, iq_ff=%.3f, limit=[%.3f, %.3f], limit_kp=%.3f, limit_kd=%.3f, max=[pos %.3f, vel %.3f, iq %.3f, kp %.3f, kd %.3f]",
+      "Opening KW smart knob serial %s @ %u, motor_id=0x%02x, enable_on_start=%s, mode=%s, period=%.3f ms, spacing=%.5f rad, detents_per_revolution=%d, wrap_angle=%s, wrap_period=%.5f, kp=%.3f, kd=%.3f, iq_ff=%.3f, endstop=[%.3f, %.3f], endstop_kp=%.3f, endstop_kd=%.3f, max=[pos %.3f, vel %.3f, iq %.3f, kp %.3f, kd %.3f]",
       serial_port_.c_str(), serial_baud, can_id_, enable_on_start ? "true" : "false",
       mode_name(mode_), checked_positive_double(*this, "basic.period_ms"), detent_spacing_,
       detents_per_revolution_, wrap_angle_ ? "true" : "false", wrap_period_, kp_, kd_,
-      iq_ff_, limit_min_, limit_max_, limit_kp_, limit_kd_, pos_max_, vel_max_, iq_max_,
+      iq_ff_, endstop_min_, endstop_max_, endstop_kp_, endstop_kd_, pos_max_, vel_max_, iq_max_,
       kp_max_, kd_max_);
 
     control_ = std::make_shared<kw::MotorControl>(
@@ -336,10 +360,10 @@ private:
       double next_detent_kd = kd_;
       double next_detent_iq_ff = iq_ff_;
 
-      double next_limit_min = limit_min_;
-      double next_limit_max = limit_max_;
-      double next_limit_kp = limit_kp_;
-      double next_limit_kd = limit_kd_;
+      double next_endstop_min = endstop_min_;
+      double next_endstop_max = endstop_max_;
+      double next_endstop_kp = endstop_kp_;
+      double next_endstop_kd = endstop_kd_;
 
       double next_spring_kp = spring_kp_;
       double next_spring_kd = spring_kd_;
@@ -375,14 +399,14 @@ private:
           next_detent_kd = parameter.as_double();
         } else if (name == "detent.iq_ff") {
           next_detent_iq_ff = parameter.as_double();
-        } else if (name == "limit.min") {
-          next_limit_min = parameter.as_double();
-        } else if (name == "limit.max") {
-          next_limit_max = parameter.as_double();
-        } else if (name == "limit.kp") {
-          next_limit_kp = parameter.as_double();
-        } else if (name == "limit.kd") {
-          next_limit_kd = parameter.as_double();
+        } else if (name == "endstop.min" || name == "limit.min") {
+          next_endstop_min = parameter.as_double();
+        } else if (name == "endstop.max" || name == "limit.max") {
+          next_endstop_max = parameter.as_double();
+        } else if (name == "endstop.kp" || name == "limit.kp") {
+          next_endstop_kp = parameter.as_double();
+        } else if (name == "endstop.kd" || name == "limit.kd") {
+          next_endstop_kd = parameter.as_double();
         } else if (name == "spring.kp") {
           next_spring_kp = parameter.as_double();
         } else if (name == "spring.kd") {
@@ -411,17 +435,17 @@ private:
       validate_gain("detent.kp", next_detent_kp, kp_max_);
       validate_gain("detent.kd", next_detent_kd, kd_max_);
       validate_iq("detent.iq_ff", next_detent_iq_ff);
-      validate_gain("limit.kp", next_limit_kp, kp_max_);
-      validate_gain("limit.kd", next_limit_kd, kd_max_);
+      validate_gain("endstop.kp", next_endstop_kp, kp_max_);
+      validate_gain("endstop.kd", next_endstop_kd, kd_max_);
       validate_gain("spring.kp", next_spring_kp, kp_max_);
       validate_gain("spring.kd", next_spring_kd, kd_max_);
       validate_iq("spring.iq_ff", next_spring_iq_ff);
 
-      if (!std::isfinite(next_limit_min) || !std::isfinite(next_limit_max)) {
-        throw std::out_of_range("limit.min and limit.max must be finite");
+      if (!std::isfinite(next_endstop_min) || !std::isfinite(next_endstop_max)) {
+        throw std::out_of_range("endstop.min and endstop.max must be finite");
       }
-      if (next_limit_min >= next_limit_max) {
-        throw std::out_of_range("limit.min must be smaller than limit.max");
+      if (next_endstop_min >= next_endstop_max) {
+        throw std::out_of_range("endstop.min must be smaller than endstop.max");
       }
 
       mode_ = next_mode;
@@ -434,10 +458,10 @@ private:
       kd_ = next_detent_kd;
       iq_ff_ = next_detent_iq_ff;
 
-      limit_min_ = next_limit_min;
-      limit_max_ = next_limit_max;
-      limit_kp_ = next_limit_kp;
-      limit_kd_ = next_limit_kd;
+      endstop_min_ = next_endstop_min;
+      endstop_max_ = next_endstop_max;
+      endstop_kp_ = next_endstop_kp;
+      endstop_kd_ = next_endstop_kd;
 
       spring_kp_ = next_spring_kp;
       spring_kd_ = next_spring_kd;
@@ -445,9 +469,9 @@ private:
 
       RCLCPP_INFO(
         get_logger(),
-        "Updated smart knob runtime params: mode=%s, detent=[spacing %.5f kp %.3f kd %.3f iq_ff %.3f], limit=[%.3f %.3f kp %.3f kd %.3f], spring=[kp %.3f kd %.3f iq_ff %.3f]",
-        mode_name(mode_), detent_spacing_, kp_, kd_, iq_ff_, limit_min_, limit_max_, limit_kp_,
-        limit_kd_, spring_kp_, spring_kd_, spring_iq_ff_);
+        "Updated smart knob runtime params: mode=%s, detent=[spacing %.5f kp %.3f kd %.3f iq_ff %.3f], endstop=[%.3f %.3f kp %.3f kd %.3f], spring=[kp %.3f kd %.3f iq_ff %.3f]",
+        mode_name(mode_), detent_spacing_, kp_, kd_, iq_ff_, endstop_min_, endstop_max_,
+        endstop_kp_, endstop_kd_, spring_kp_, spring_kd_, spring_iq_ff_);
 
       result.successful = true;
       return result;
@@ -541,22 +565,22 @@ private:
   KnobCommand compute_command(double q) const
   {
     switch (mode_) {
-      case KnobMode::Off:
-        return compute_off_command(q);
+      case KnobMode::Free:
+        return compute_free_command(q);
       case KnobMode::Detent:
         return compute_detent_command(q);
-      case KnobMode::Limit:
-        return compute_limit_command(q);
+      case KnobMode::Endstop:
+        return compute_endstop_command(q);
       case KnobMode::Spring:
         return compute_spring_command(q);
     }
-    return compute_off_command(q);
+    return compute_free_command(q);
   }
 
-  KnobCommand compute_off_command(double q) const
+  KnobCommand compute_free_command(double q) const
   {
     KnobCommand command{};
-    command.label = "off";
+    command.label = "free";
     command.relative_q = wrap_delta(q - center_q_);
     command.target_q = q;
     command.q_ref = q;
@@ -581,22 +605,22 @@ private:
     return command;
   }
 
-  KnobCommand compute_limit_command(double q) const
+  KnobCommand compute_endstop_command(double q) const
   {
     KnobCommand command{};
-    command.label = "limit";
+    command.label = "endstop";
     command.relative_q = wrap_delta(q - center_q_);
 
-    if (command.relative_q < limit_min_) {
+    if (command.relative_q < endstop_min_) {
       command.active = true;
       command.index = -1;
-      const double target_relative_q = limit_min_;
+      const double target_relative_q = endstop_min_;
       command.target_q = wrap_absolute(center_q_ + target_relative_q);
       command.error_q = wrap_delta(target_relative_q - command.relative_q);
-    } else if (command.relative_q > limit_max_) {
+    } else if (command.relative_q > endstop_max_) {
       command.active = true;
       command.index = 1;
-      const double target_relative_q = limit_max_;
+      const double target_relative_q = endstop_max_;
       command.target_q = wrap_absolute(center_q_ + target_relative_q);
       command.error_q = wrap_delta(target_relative_q - command.relative_q);
     } else {
@@ -606,8 +630,8 @@ private:
       command.error_q = 0.0;
     }
 
-    command.kp = command.active ? limit_kp_ : 0.0;
-    command.kd = command.active ? limit_kd_ : 0.0;
+    command.kp = command.active ? endstop_kp_ : 0.0;
+    command.kd = command.active ? endstop_kd_ : 0.0;
     command.q_ref = command.target_q;
     command.dq_ref = 0.0;
     command.iq_ff = 0.0;
@@ -689,10 +713,10 @@ private:
   double kp_{1.2};
   double kd_{0.02};
   double iq_ff_{0.0};
-  double limit_min_{-1.57};
-  double limit_max_{1.57};
-  double limit_kp_{1.2};
-  double limit_kd_{0.02};
+  double endstop_min_{-1.57};
+  double endstop_max_{1.57};
+  double endstop_kp_{1.2};
+  double endstop_kd_{0.02};
   double spring_kp_{1.2};
   double spring_kd_{0.02};
   double spring_iq_ff_{0.0};

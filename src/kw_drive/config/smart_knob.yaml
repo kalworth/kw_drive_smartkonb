@@ -34,7 +34,7 @@ kw_smart_knob:
       kd: 0.05
       iq_ff: 0.0
 
-    limit:
+    endstop:
       min: -1.57
       max: 1.57
       kp: 1.5

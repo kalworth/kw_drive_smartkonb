@@ -8,7 +8,7 @@
 ## ✨ New
 
 - 🧭 **[2026-06-12][v0.1.0]** 按固定 README 模板重写工作空间总览，补齐运行路径、参数、验证和安全注意。
-- 🕹️ **[2026-06-11][v0.1.0]** `kw_smart_knob` 支持 `off / detent / limit / spring` 手感模式，并支持 ROS 2 参数服务在线调参。
+- 🕹️ **[2026-06-11][v0.1.0]** `kw_smart_knob` 支持 `free / detent / endstop / spring` 手感模式，并支持 ROS 2 参数服务在线调参。
 
 <details>
 <summary>历史更新</summary>
@@ -41,7 +41,7 @@
 | `serial_baud` / `serial.baud` | 默认 `921600` |
 | `can_id` / `motor.can_id` | 电机基础 CAN ID，默认 `1` |
 | `motor_test.yaml` | 单电机零输出或固定 MIT 指令测试配置 |
-| `smart_knob.yaml` | 力反馈旋钮模式、增益、限位和周期配置 |
+| `smart_knob.yaml` | 力反馈旋钮模式、增益、止挡和周期配置 |
 
 | 输出 | 说明 |
 | :--- | :--- |
@@ -65,7 +65,7 @@ MIT 控制：can_id | 0x70
 | 失能电机 | `0xFD` | 节点退出时用于关闭输出 |
 | MIT 控制 | `kp / kd / q / dq / iq` | `iq` 表示 q 轴电流 |
 | 状态反馈 | `/kw_motor/state` | 错误标志在节点日志中打印，曲线 topic 发布运动量 |
-| Smart Knob | `kw_smart_knob` | 单电机虚拟档位、限位、回中手感 demo |
+| Smart Knob | `kw_smart_knob` | 单电机虚拟档位、止挡、回中手感 demo |
 
 ## 🚀 快速开始
 
@@ -137,7 +137,7 @@ ros2 launch kw_drive motor_test.launch.py
 
 ### 4. 🕹️ Smart Knob
 
-`kw_smart_knob` 读取电机位置和速度，根据 `basic.mode` 计算当前手感目标，再通过 MIT 控制报文发送：
+`kw_smart_knob` 读取电机位置和速度，根据 `basic.mode` 计算当前手感目标，再通过 MIT 控制报文发送。命名对齐开源 SmartKnob 的 `virtual detents` 和 `endstops`：`detent` 在这里就是棘轮/虚拟档位，`endstop` 是软件止挡。
 
 ```text
 kp / kd / q_ref=target_q / dq_ref=0 / iq_ff
@@ -153,10 +153,12 @@ src/kw_drive/config/smart_knob.yaml
 
 | `basic.mode` | 行为 |
 | :--- | :--- |
-| `"off"` | 始终发送零 MIT 命令 |
-| `"detent"` | 吸附到最近虚拟档位 |
-| `"limit"` | 范围内零输出，越界后吸回边界 |
+| `"free"` | 始终发送零 MIT 命令 |
+| `"detent"` | 吸附到最近棘轮档位 |
+| `"endstop"` | 范围内零输出，越界后吸回边界 |
 | `"spring"` | 始终吸回启动中心点 |
+
+旧名 `off` 和 `limit` 仍作为兼容别名可用；新配置和文档统一使用 `free`、`endstop`。
 
 常用参数：
 
@@ -166,8 +168,8 @@ src/kw_drive/config/smart_knob.yaml
 | `basic.zero_on_start` | 第一次收到反馈时把当前位置作为中心 |
 | `detent.spacing` | 档位间隔，单位 rad |
 | `detent.per_revolution` | 每圈档位数，`0` 表示直接使用 `detent.spacing` |
-| `detent.kp` / `detent.kd` | 段落吸附 MIT 增益 |
-| `limit.min` / `limit.max` | 相对启动中心点的虚拟左右限位 |
+| `detent.kp` / `detent.kd` | 棘轮档位吸附 MIT 增益 |
+| `endstop.min` / `endstop.max` | 相对启动中心点的虚拟 endstop 左右止挡 |
 | `spring.kp` / `spring.kd` | 回中手感 MIT 增益 |
 | `mit.kp_max` / `mit.kd_max` | 要和驱动器协议配置一致 |
 | `angle.wrap` / `angle.period` | 绝对角度反馈的环形误差设置 |
@@ -182,13 +184,15 @@ ros2 launch kw_drive smart_knob.launch.py
 
 ```bash
 ros2 param set /kw_smart_knob basic.mode "detent"
-ros2 param set /kw_smart_knob basic.mode "limit"
+ros2 param set /kw_smart_knob basic.mode "endstop"
 ros2 param set /kw_smart_knob basic.mode "spring"
 ros2 param set /kw_smart_knob detent.kp 0.8
 ros2 param set /kw_smart_knob spring.kp 0.3
 ```
 
 硬件/协议参数不支持运行中修改，例如 `serial.*`、`motor.can_id`、`motor.pos_max`、`mit.kp_max/kd_max`、`angle.period`。这些参数改 YAML 后重启节点。
+
+旧参数组 `limit.*` 仍可被节点识别；新 YAML 统一使用 `endstop.*`。
 
 ### 5. 📈 示波器工具
 
